@@ -1,0 +1,3 @@
+[submodule "third_party/cfd_lib"]
+	path = third_party/cfd_lib
+	url = git@github.com:Adesz0611/cfd_lib.git
