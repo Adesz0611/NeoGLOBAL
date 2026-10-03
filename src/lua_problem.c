@@ -9,8 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// TODO: use memory arena from cfd_lib
-
 typedef struct {
     lua_State *state;
     int evaluate_ref;
@@ -30,10 +28,10 @@ static void lua_problem_set_error(
 }
 
 
-static char *lua_problem_strdup(const char *string) {
+static char *lua_problem_strdup(CFD_Arena *arena, const char *string) {
     size_t size = strlen(string) + 1;
 
-    char *copy = malloc(size);
+    char *copy = cfd_arena_alloc(arena, size);
 
     if (!copy)
         return NULL;
@@ -292,13 +290,14 @@ static void lua_problem_destroy_evaluator(void *userdata) {
 
 
 b32 neoglobal_problem_load_lua(
+    CFD_Arena *arena,
     const char *path,
     NeoGlobal_Problem *problem,
     char *error,
     size_t error_size
 )
 {
-    if (!path || !problem) {
+    if (!arena || !arena->buffer || !path || !problem) {
         lua_problem_set_error(
             error,
             error_size,
@@ -308,6 +307,7 @@ b32 neoglobal_problem_load_lua(
         return 0;
     }
 
+    u64 arena_start = arena->offset;
     memset(problem, 0, sizeof(*problem));
 
     lua_State *state = luaL_newstate();
@@ -379,10 +379,10 @@ b32 neoglobal_problem_load_lua(
     lua_getfield(state, root, "name");
 
     if (lua_isnil(state, -1)) {
-        problem->name = lua_problem_strdup("Unnamed problem");
+        problem->name = lua_problem_strdup(arena, "Unnamed problem");
     }
     else if (lua_type(state, -1) == LUA_TSTRING) {
-        problem->name = lua_problem_strdup(lua_tostring(state, -1));
+        problem->name = lua_problem_strdup(arena, lua_tostring(state, -1));
     }
     else {
         lua_problem_set_error(
@@ -444,9 +444,8 @@ b32 neoglobal_problem_load_lua(
     /*
      * Allocate bounds.
      */
-    problem->lower = malloc(sizeof(*problem->lower) * problem->dimension);
-
-    problem->upper = malloc(sizeof(*problem->upper) * problem->dimension);
+    problem->lower = cfd_arena_push_array(arena, NeoGlobal_Real, problem->dimension);
+    problem->upper = cfd_arena_push_array(arena, NeoGlobal_Real, problem->dimension);
 
     if (!problem->lower || !problem->upper) {
         lua_problem_set_error(
@@ -631,12 +630,8 @@ b32 neoglobal_problem_load_lua(
 
 
 fail:
-
-    free(problem->name);
-    free(problem->lower);
-    free(problem->upper);
-
     memset(problem, 0, sizeof(*problem));
+    arena->offset = arena_start;
 
     lua_close(state);
 

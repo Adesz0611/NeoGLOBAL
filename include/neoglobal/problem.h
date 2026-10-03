@@ -2,15 +2,7 @@
 #define NEOGLOBAL_PROBLEM_H
 
 #include <stddef.h>
-#include <stdint.h>
-
-// TODO: use cfd_lib
-typedef uint64_t u64;
-typedef uint32_t u32;
-typedef uint32_t b32;
-typedef float    f32;
-typedef double   f64;
-typedef uint8_t  u8;
+#include <cfd_core.h>
 
 #ifdef NEOGLOBAL_USE_F32
 typedef f32 NeoGlobal_Real;
@@ -63,6 +55,7 @@ b32 neoglobal_problem_evaluate(
     size_t error_size
 );
 
+/* Releases evaluator resources; arena storage remains caller-owned. */
 void neoglobal_problem_destroy(
     NeoGlobal_Problem *problem
 );
@@ -71,7 +64,9 @@ const char *neoglobal_evaluator_type_name(
     NeoGlobal_Evaluator_Type type
 );
 
+/* Problem-owned strings and bounds are allocated from arena. */
 b32 neoglobal_problem_load_lua(
+    CFD_Arena *arena,
     const char *path,
     NeoGlobal_Problem *problem,
     char *error,

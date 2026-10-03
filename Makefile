@@ -1,12 +1,21 @@
 CC ?= cc
 AR ?= ar
 
-BUILD_DIR := build
+NEOGLOBAL_REAL ?= f64
+
+ifeq ($(NEOGLOBAL_REAL),f32)
+NEOGLOBAL_REAL_CPPFLAGS := -DNEOGLOBAL_USE_F32
+else ifneq ($(NEOGLOBAL_REAL),f64)
+$(error NEOGLOBAL_REAL must be either f32 or f64)
+endif
+
+BUILD_DIR := build/$(NEOGLOBAL_REAL)
+BUILD_ROOT := build
 LUA_DIR   := third_party/lua/src
 LUA_LIB   := $(BUILD_DIR)/liblua.a
 TARGET    := $(BUILD_DIR)/neoglobal
 
-CPPFLAGS   := -Iinclude -I$(LUA_DIR)
+CPPFLAGS   := -Iinclude -I$(LUA_DIR) -Ithird_party/cfd_lib $(NEOGLOBAL_REAL_CPPFLAGS)
 CFLAGS     ?= -O2 -std=c11
 NEO_CFLAGS := $(CFLAGS) -Wall -Wextra -Wpedantic
 LUA_CFLAGS := $(CFLAGS)
@@ -64,7 +73,6 @@ LUA_OBJS := $(patsubst %.c,$(BUILD_DIR)/lua/%.o,$(LUA_SRCS))
 
 # NeoGLOBAL uses a unity translation unit for its own implementation.
 NEO_SRCS := \
-	src/main.c \
 	src/neoglobal_unity.c
 
 NEO_OBJS := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(NEO_SRCS))
@@ -88,5 +96,7 @@ $(BUILD_DIR)/%.o: src/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(NEO_CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/neoglobal_unity.o: src/main.c src/problem.c src/lua_problem.c include/neoglobal/problem.h third_party/cfd_lib/cfd_core.h
+
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_ROOT)

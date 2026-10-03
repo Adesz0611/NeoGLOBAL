@@ -1,7 +1,6 @@
 #include <neoglobal/problem.h>
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 
@@ -11,7 +10,6 @@ static void problem_set_error(char *error, size_t error_size, const char *messag
 
     snprintf(error, error_size, "%s", message);
 }
-
 
 b32 neoglobal_problem_evaluate(
     const NeoGlobal_Problem *problem,
@@ -81,10 +79,6 @@ void neoglobal_problem_destroy(NeoGlobal_Problem *problem) {
             problem->evaluator_data
         );
     }
-
-    free(problem->name);
-    free(problem->lower);
-    free(problem->upper);
 
     memset(problem, 0, sizeof(*problem));
 }
