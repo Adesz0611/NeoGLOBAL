@@ -60,6 +60,7 @@ A NeoGLOBAL problem file may contain the following top-level fields:
 | `stopping` | table | No | Termination conditions |
 | `random` | table | No | Random number generator configuration |
 | `neoglobal` | table | No | NeoGLOBAL-specific algorithm configuration |
+| `local_search` | table | No | Local-search method settings |
 
 The problem file defines **what should be optimized**.
 
@@ -497,7 +498,11 @@ Maximum number of objective function evaluations.
 **Type:** positive integer  
 **Required:** No
 
+**Default:** `100000`
+
 Every evaluated candidate increments the function evaluation counter.
+The sampling stage treats this value as a hard limit and shortens its final
+batch when fewer evaluations remain.
 
 This quantity is commonly referred to as:
 
@@ -551,6 +556,8 @@ Initial seed of NeoGLOBAL's pseudo-random number generator.
 **Type:** non-negative integer  
 **Required:** No
 
+**Default:** `42`
+
 Explicit seeds are strongly recommended for:
 
 - benchmarks,
@@ -574,7 +581,7 @@ Parallel or distributed execution may introduce additional sources of non-determ
 
 ## `neoglobal`
 
-The optional `neoglobal` table is reserved for settings specific to the NeoGLOBAL algorithm.
+The optional `neoglobal` table contains settings specific to the NeoGLOBAL algorithm.
 
 ```lua
 neoglobal = {
@@ -584,29 +591,36 @@ neoglobal = {
 
 These settings define **how the optimizer behaves**, rather than defining the mathematical optimization problem itself.
 
-Possible future parameters may include settings related to:
-
-- sample generation,
-- reduction,
-- clustering,
-- local search,
-- worker behavior,
-- pooling,
-- parallel execution,
-- distributed communication.
-
-For example, a future version might support:
+The initial serial Global sampling/reduction stage accepts:
 
 ```lua
 neoglobal = {
     samples_per_iteration = 1000,
     reduced_samples = 20,
+    alpha = 0.5,
 }
 ```
 
-The exact interface is intentionally not finalized yet.
+`samples_per_iteration` is the number of new uniform samples generated per iteration. It must be a positive integer. The default is `1000`.
 
-Algorithm-specific parameters should only be added once their semantics are well-defined and implemented.
+`reduced_samples` is the number of best samples taken from the accumulated sample pool for clustering and local search. It must be a positive integer no greater than `samples_per_iteration`. The default is `20`.
+
+`alpha` controls how quickly the cluster distance threshold shrinks as samples are added to clusters. It must be in the inclusive range `[0, 1]`. The default is `0.5`.
+
+`alpha` is used by the clustering stage.
+
+The initial bounded coordinate pattern-search implementation accepts:
+
+```lua
+local_search = {
+    max_evaluations = 1000,
+    relative_tolerance = 1e-6,
+}
+```
+
+`local_search.max_evaluations` limits objective evaluations in one local search. The global `stopping.max_evaluations` limit still applies to the entire run. The default local limit is `1000`.
+
+`local_search.relative_tolerance` stops the local search when its coordinate step is sufficiently small relative to the search-space bounds. It must be greater than `0` and less than `1`. The default is `1e-6`.
 
 ---
 
@@ -922,4 +936,3 @@ The NeoGLOBAL Lua problem-file format is currently under development.
 Fields documented as future or planned functionality may change before the first stable release.
 
 The stable specification should always match the behavior implemented by NeoGLOBAL.
-

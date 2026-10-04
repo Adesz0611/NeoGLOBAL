@@ -185,6 +185,214 @@ static b32 lua_problem_read_bounds(
     return 0;
 }
 
+static b32 lua_problem_read_unsigned_option(
+    lua_State *state,
+    int options_index,
+    const char *field_name,
+    const char *display_name,
+    u64 default_value,
+    u64 minimum,
+    u64 maximum,
+    u64 *output,
+    char *error,
+    size_t error_size
+)
+{
+    lua_getfield(state, options_index, field_name);
+
+    if (lua_isnil(state, -1)) {
+        *output = default_value;
+        lua_pop(state, 1);
+        return true;
+    }
+
+    if (!lua_isinteger(state, -1)) {
+        snprintf(error, error_size, "%s must be an integer", display_name);
+        lua_pop(state, 1);
+        return false;
+    }
+
+    lua_Integer value = lua_tointeger(state, -1);
+    lua_pop(state, 1);
+
+    if (value < 0 || (u64)value < minimum || (u64)value > maximum) {
+        snprintf(
+            error,
+            error_size,
+            "%s must be between %llu and %llu",
+            display_name,
+            (unsigned long long)minimum,
+            (unsigned long long)maximum
+        );
+        return false;
+    }
+
+    *output = (u64)value;
+    return true;
+}
+
+static b32 lua_problem_read_settings(
+    lua_State *state,
+    int root_index,
+    NeoGlobal_Problem *problem,
+    char *error,
+    size_t error_size
+)
+{
+    problem->random_seed = 42;
+    problem->max_evaluations = 100000;
+    problem->samples_per_iteration = 1000;
+    problem->reduced_samples = 20;
+    problem->alpha = 0.5;
+    problem->local_search_max_evaluations = 1000;
+    problem->local_search_relative_tolerance = 1e-6;
+
+    u64 samples_per_iteration = problem->samples_per_iteration;
+    u64 reduced_samples = problem->reduced_samples;
+
+    struct {
+        const char *table_name;
+        const char *field_name;
+        const char *display_name;
+        u64 default_value;
+        u64 minimum;
+        u64 maximum;
+        u64 *output;
+    } options[] = {
+        {
+            "random", "seed", "random.seed",
+            problem->random_seed, 0, UINT64_MAX, &problem->random_seed
+        },
+        {
+            "stopping", "max_evaluations", "stopping.max_evaluations",
+            problem->max_evaluations, 1, UINT64_MAX, &problem->max_evaluations
+        },
+        {
+            "neoglobal", "samples_per_iteration", "neoglobal.samples_per_iteration",
+            problem->samples_per_iteration, 1, UINT32_MAX,
+            &samples_per_iteration
+        },
+        {
+            "neoglobal", "reduced_samples", "neoglobal.reduced_samples",
+            problem->reduced_samples, 1, UINT32_MAX,
+            &reduced_samples
+        },
+        {
+            "local_search", "max_evaluations", "local_search.max_evaluations",
+            problem->local_search_max_evaluations, 1, UINT64_MAX,
+            &problem->local_search_max_evaluations
+        },
+    };
+
+    for (size_t i = 0; i < sizeof(options) / sizeof(options[0]); ++i) {
+        lua_getfield(state, root_index, options[i].table_name);
+
+        if (lua_isnil(state, -1)) {
+            lua_pop(state, 1);
+            continue;
+        }
+
+        if (lua_type(state, -1) != LUA_TTABLE) {
+            snprintf(error, error_size, "%s must be a table", options[i].table_name);
+            lua_pop(state, 1);
+            return false;
+        }
+
+        int table_index = lua_absindex(state, -1);
+        u64 value;
+        b32 valid = lua_problem_read_unsigned_option(
+            state,
+            table_index,
+            options[i].field_name,
+            options[i].display_name,
+            options[i].default_value,
+            options[i].minimum,
+            options[i].maximum,
+            &value,
+            error,
+            error_size
+        );
+        lua_pop(state, 1);
+
+        if (!valid)
+            return false;
+
+        *options[i].output = value;
+    }
+
+    problem->samples_per_iteration = (u32)samples_per_iteration;
+    problem->reduced_samples = (u32)reduced_samples;
+
+    if (problem->reduced_samples > problem->samples_per_iteration) {
+        lua_problem_set_error(
+            error,
+            error_size,
+            "neoglobal.reduced_samples cannot exceed neoglobal.samples_per_iteration"
+        );
+        return false;
+    }
+
+    lua_getfield(state, root_index, "neoglobal");
+    if (lua_type(state, -1) == LUA_TTABLE) {
+        lua_getfield(state, -1, "alpha");
+
+        if (!lua_isnil(state, -1)) {
+            if (lua_type(state, -1) != LUA_TNUMBER) {
+                lua_problem_set_error(error, error_size, "neoglobal.alpha must be a number");
+                lua_pop(state, 2);
+                return false;
+            }
+
+            lua_Number alpha = lua_tonumber(state, -1);
+            if (!isfinite((double)alpha) || alpha < 0.0 || alpha > 1.0) {
+                lua_problem_set_error(error, error_size, "neoglobal.alpha must be in [0, 1]");
+                lua_pop(state, 2);
+                return false;
+            }
+
+            problem->alpha = (f64)alpha;
+        }
+
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 1);
+
+    lua_getfield(state, root_index, "local_search");
+    if (lua_type(state, -1) == LUA_TTABLE) {
+        lua_getfield(state, -1, "relative_tolerance");
+
+        if (!lua_isnil(state, -1)) {
+            if (lua_type(state, -1) != LUA_TNUMBER) {
+                lua_problem_set_error(
+                    error,
+                    error_size,
+                    "local_search.relative_tolerance must be a number"
+                );
+                lua_pop(state, 2);
+                return false;
+            }
+
+            lua_Number tolerance = lua_tonumber(state, -1);
+            if (!isfinite((double)tolerance) || tolerance <= 0.0 || tolerance >= 1.0) {
+                lua_problem_set_error(
+                    error,
+                    error_size,
+                    "local_search.relative_tolerance must be in (0, 1)"
+                );
+                lua_pop(state, 2);
+                return false;
+            }
+
+            problem->local_search_relative_tolerance = (f64)tolerance;
+        }
+
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 1);
+
+    return true;
+}
+
 
 static b32 lua_problem_evaluate(
     const NeoGlobal_Real *x,
@@ -372,6 +580,9 @@ b32 neoglobal_problem_load_lua(
     }
 
     int root = lua_absindex(state, -1);
+
+    if (!lua_problem_read_settings(state, root, problem, error, error_size))
+        goto fail;
 
     /*
      * name

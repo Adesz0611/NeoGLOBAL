@@ -14,6 +14,7 @@ BUILD_ROOT := build
 LUA_DIR   := third_party/lua/src
 LUA_LIB   := $(BUILD_DIR)/liblua.a
 TARGET    := $(BUILD_DIR)/neoglobal
+TEST_TARGET := $(BUILD_DIR)/test_neoglobal
 
 CPPFLAGS   := -Iinclude -I$(LUA_DIR) -Ithird_party/cfd_lib $(NEOGLOBAL_REAL_CPPFLAGS)
 CFLAGS     ?= -O2 -std=c11
@@ -77,7 +78,7 @@ NEO_SRCS := \
 
 NEO_OBJS := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(NEO_SRCS))
 
-.PHONY: all clean
+.PHONY: all clean test
 
 all: $(TARGET)
 
@@ -96,7 +97,17 @@ $(BUILD_DIR)/%.o: src/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(NEO_CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/neoglobal_unity.o: src/main.c src/problem.c src/lua_problem.c include/neoglobal/problem.h third_party/cfd_lib/cfd_core.h
+$(BUILD_DIR)/neoglobal_unity.o: src/main.c src/problem.c src/lua_problem.c src/sampling.c src/clustering.c src/local_search.c src/optimizer.c include/neoglobal/problem.h include/neoglobal/sampling.h include/neoglobal/clustering.h include/neoglobal/local_search.h include/neoglobal/optimizer.h third_party/cfd_lib/cfd_core.h
+
+test: $(TEST_TARGET)
+	$(TEST_TARGET)
+
+$(TEST_TARGET): $(BUILD_DIR)/test_unity.o $(LUA_LIB)
+	$(CC) $(BUILD_DIR)/test_unity.o $(LUA_LIB) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(BUILD_DIR)/test_unity.o: tests/test_unity.c tests/test_neoglobal.c tests/problems/sphere_small.lua src/problem.c src/lua_problem.c src/sampling.c src/clustering.c src/local_search.c src/optimizer.c include/neoglobal/problem.h include/neoglobal/sampling.h include/neoglobal/clustering.h include/neoglobal/local_search.h include/neoglobal/optimizer.h third_party/cfd_lib/cfd_core.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(NEO_CFLAGS) -c tests/test_unity.c -o $@
 
 clean:
 	rm -rf $(BUILD_ROOT)

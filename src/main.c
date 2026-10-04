@@ -1,4 +1,4 @@
-#include <neoglobal/problem.h>
+#include <neoglobal/optimizer.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -90,46 +90,11 @@ int main(int argc, char **argv) {
         );
     }
 
-    /*
-     * For now, evaluate the center of
-     * the search space as an end-to-end test.
-     */
-    NeoGlobal_Real *x = cfd_arena_push_array(&arena, NeoGlobal_Real, problem->dimension);
-
-    if (x == NULL) {
-        fprintf(stderr, "NeoGLOBAL error: out of memory\n");
-
-        neoglobal_problem_destroy(problem);
-        cfd_arena_log_usage("NeoGLOBAL", &arena);
-        cfd_arena_destroy(&arena);
-
-        return EXIT_FAILURE;
-    }
-
-    for (u32 i = 0; i < problem->dimension; ++i) {
-        x[i] =
-            problem->lower[i]
-            + (
-                problem->upper[i]
-                - problem->lower[i]
-            )
-            * NEOGLOBAL_REAL_CAST(0.5);
-    }
-
-    NeoGlobal_Real result;
-
-    if (
-        !neoglobal_problem_evaluate(
-            problem,
-            x,
-            &result,
-            error,
-            sizeof(error)
-        )
-    ) {
+    NeoGlobal_Result result;
+    if (!neoglobal_optimize(&arena, problem, &result, error, sizeof(error))) {
         fprintf(
             stderr,
-            "NeoGLOBAL evaluator error:\n%s\n",
+            "NeoGLOBAL optimization error:\n%s\n",
             error
         );
 
@@ -141,7 +106,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    printf("\nSearch-space midpoint:\n");
+    printf("\nBest solution found:\n");
 
     printf("  x = [");
 
@@ -149,12 +114,18 @@ int main(int argc, char **argv) {
         if (i != 0)
             printf(", ");
 
-        printf("%g", (double)x[i]);
+        printf("%g", (double)result.best.x[i]);
     }
 
     printf("]\n");
 
-    printf("  f(x) = %.17g\n", (double)result);
+    printf("  f(x) = %.17g\n", (double)result.best.objective);
+    printf("  Evaluations:   %llu / %llu\n",
+        (unsigned long long)result.evaluations,
+        (unsigned long long)problem->max_evaluations);
+    printf("  Iterations:    %llu\n", (unsigned long long)result.iterations);
+    printf("  Local searches:%llu\n", (unsigned long long)result.local_searches);
+    printf("  Clusters:      %llu\n", (unsigned long long)result.clusters);
 
     neoglobal_problem_destroy(problem);
     cfd_arena_log_usage("NeoGLOBAL", &arena);

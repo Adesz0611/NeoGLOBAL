@@ -36,6 +36,14 @@ typedef struct {
 
     u32 dimension;
 
+    u64 random_seed;
+    u64 max_evaluations;
+    u32 samples_per_iteration;
+    u32 reduced_samples;
+    f64 alpha;
+    u64 local_search_max_evaluations;
+    f64 local_search_relative_tolerance;
+
     NeoGlobal_Real *lower;
     NeoGlobal_Real *upper;
 

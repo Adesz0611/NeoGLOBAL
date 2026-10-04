@@ -10,4 +10,8 @@
 
 #include "problem.c"
 #include "lua_problem.c"
+#include "sampling.c"
+#include "clustering.c"
+#include "local_search.c"
+#include "optimizer.c"
 #include "main.c"
