@@ -56,6 +56,7 @@ def parse_output(stdout: str) -> tuple[int, float, float]:
 
 def run_solver(
     name: str,
+    algorithm_name: str,
     function: int,
     dimension: int,
     instance: int,
@@ -71,6 +72,8 @@ def run_solver(
         str(budget),
         str(seed),
     ]
+    if name == "NeoGLOBAL":
+        command.append(algorithm_name)
     completed = subprocess.run(command, cwd=working_directory, text=True, capture_output=True)
     if completed.returncode != 0:
         raise RuntimeError(
@@ -80,13 +83,14 @@ def run_solver(
         )
 
     evaluations, best_f, elapsed = parse_output(completed.stdout)
+    result_name = algorithm_name if name == "NeoGLOBAL" else name
     print(
-        f"{name:9s} f={function:02d} d={dimension:2d} i={instance:2d} "
+        f"{result_name:20s} f={function:02d} d={dimension:2d} i={instance:2d} "
         f"seed={seed:4d} evals={evaluations:7d}/{budget:<7d} "
         f"best_f={best_f:.12g} elapsed={elapsed:.6f}s"
     )
     return {
-        "solver": name,
+        "solver": algorithm_name if name == "NeoGLOBAL" else name,
         "function": function,
         "dimension": dimension,
         "instance": instance,
@@ -156,13 +160,18 @@ def write_summary(path: Path, rows: list[dict[str, object]]) -> None:
         writer.writerows(summaries)
 
 
-def plot_results(rows: list[dict[str, object]], title: str, output: Path) -> None:
+def plot_results(
+    rows: list[dict[str, object]],
+    title: str,
+    output: Path,
+    solver_names: list[str],
+) -> None:
     try:
         import matplotlib.pyplot as plt
     except ImportError as exc:
         raise RuntimeError("install matplotlib to generate plots: python3 -m pip install matplotlib") from exc
 
-    names = list(BINARIES)
+    names = solver_names
     times = [
         [float(row["elapsed_seconds"]) for row in rows if row["solver"] == name]
         for name in names
@@ -214,6 +223,21 @@ def main() -> int:
                         help="evaluation budget per dimension (default: 500; 2D gives 1000)")
     parser.add_argument("--runs", type=int, default=10, help="paired runs per function/dimension/instance")
     parser.add_argument("--seed", type=int, default=1, help="first algorithm seed; seeds increase by one per run")
+    parser.add_argument(
+        "--neoglobal-name",
+        default="NeoGLOBAL-baseline",
+        help="versioned COCO/CSV label for NeoGLOBAL (default: NeoGLOBAL-baseline)",
+    )
+    parser.add_argument(
+        "--include-coco-results",
+        type=Path,
+        help="include an existing COCO results directory in the post-processing report",
+    )
+    parser.add_argument(
+        "--no-cmaes",
+        action="store_true",
+        help="run only NeoGLOBAL; use with --include-coco-results to compare versions without duplicating CMA-ES",
+    )
     parser.add_argument("--no-build", action="store_true", help="use already-built solver executables")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "exdata/comparisons",
                         help="base directory; each invocation creates a new experiment folder")
@@ -228,6 +252,15 @@ def main() -> int:
         parser.error("budget-per-dimension, runs, and seed must be positive")
     if args.seed + args.runs - 1 > MAX_CMAES_SEED:
         parser.error("seed range exceeds the limit supported by the bundled CMA-ES")
+    if (
+        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", args.neoglobal_name) is None
+        or args.neoglobal_name == "CMA-ES"
+    ):
+        parser.error("--neoglobal-name must be a unique 1-64 character label using letters, digits, '.', '_' or '-'")
+    if args.include_coco_results is not None:
+        args.include_coco_results = args.include_coco_results.resolve()
+        if not args.include_coco_results.is_dir():
+            parser.error(f"COCO results directory not found: {args.include_coco_results}")
 
     if not args.no_build:
         subprocess.run(["make", "bbob", "-j2"], cwd=ROOT, check=True)
@@ -247,10 +280,17 @@ def main() -> int:
     with trials_path.open("w", newline="", encoding="utf-8") as output_file:
         csv.DictWriter(output_file, fieldnames=TRIAL_FIELDS).writeheader()
     rows: list[dict[str, object]] = []
+    solver_keys = ["NeoGLOBAL"] if args.no_cmaes else list(BINARIES)
+    solver_names = [args.neoglobal_name]
+    if not args.no_cmaes:
+        solver_names.append("CMA-ES")
 
     cases = list(itertools.product(args.functions, args.dimensions, args.instances))
     print(f"Experiment: {experiment_dir}")
-    print(f"Cases: {len(cases)} × {args.runs} paired runs = {len(cases) * args.runs * 2} solver runs")
+    print(
+        f"Cases: {len(cases)} × {args.runs} runs × {len(solver_keys)} solvers "
+        f"= {len(cases) * args.runs * len(solver_keys)} solver runs"
+    )
     print(f"Budget: {args.budget} fixed" if args.budget is not None else
           f"Budget: {args.budget_per_dimension} × dimension")
 
@@ -259,9 +299,16 @@ def main() -> int:
         case_rows: list[dict[str, object]] = []
         for run_index in range(args.runs):
             seed = args.seed + run_index
-            for name in BINARIES:
+            for name in solver_keys:
                 row = run_solver(
-                    name, function, dimension, instance, budget, seed, working_directory
+                    name,
+                    args.neoglobal_name,
+                    function,
+                    dimension,
+                    instance,
+                    budget,
+                    seed,
+                    working_directory,
                 )
                 rows.append(row)
                 case_rows.append(row)
@@ -270,7 +317,7 @@ def main() -> int:
         stem = f"bbob-f{function:02d}-d{dimension}-i{instance}-b{budget}"
         plot_path = plot_dir / f"{stem}.png"
         title = f"BBOB f{function} · {dimension}D · instance {instance} · budget {budget}"
-        plot_results(case_rows, title, plot_path)
+        plot_results(case_rows, title, plot_path, solver_names)
         print(f"Plot: {plot_path}")
 
     summary_path = experiment_dir / "summary.csv"
@@ -279,9 +326,13 @@ def main() -> int:
     print(f"Trials CSV: {trials_path}")
     print(f"Summary CSV: {summary_path}")
     print(f"COCO logs: {coco_results}")
+    coco_input_paths = ["coco_work/exdata/results/"]
+    if args.include_coco_results is not None:
+        coco_input_paths.append(str(args.include_coco_results))
     postprocess_command = (
         f"cd {shlex.quote(str(experiment_dir))} && "
-        f"{shlex.quote(sys.executable)} -m cocopp coco_work/exdata/results/"
+        f"{shlex.quote(sys.executable)} -m cocopp "
+        + " ".join(shlex.quote(path) for path in coco_input_paths)
     )
     print(f"COCO postprocess: {postprocess_command}")
     return 0

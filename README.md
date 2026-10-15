@@ -111,12 +111,13 @@ normal Lua runs.
 
    ```sh
    make bbob
-   ./build/bbob/neoglobal_bbob 1 2 1 1000
+   ./build/bbob/neoglobal_bbob 1 2 1 1000 1 NeoGLOBAL-baseline
    ./build/bbob/cmaes_bbob 1 2 1 1000
    ```
 
    The arguments are function index (1–24), dimension, instance, and maximum
-   objective evaluations. The example selects Sphere (`f1`), 2 dimensions,
+   objective evaluations, followed optionally by the seed and a versioned
+   algorithm name. The default name is `NeoGLOBAL-baseline`. The example selects Sphere (`f1`), 2 dimensions,
    instance 1, and a budget of 1000 evaluations. CMA-ES is the C implementation
    bundled in COCO's `bbob2009-c-cmaes` example.
 
@@ -130,7 +131,8 @@ normal Lua runs.
    .venv/bin/python -m pip install -r requirements-bbob.txt
    .venv/bin/python scripts/compare_bbob.py \
        --functions 1,2,8 --dimensions 2,10 --instances 1,2,3 \
-       --runs 5 --budget-per-dimension 500
+       --runs 5 --budget-per-dimension 500 \
+       --neoglobal-name NeoGLOBAL-baseline
    ```
 
    The default evaluation budget is 500 times the dimension. Pass `--budget`
@@ -138,6 +140,24 @@ normal Lua runs.
    directory and a `cocopp` command after it finishes. COCO's postprocessor
    produces standard target-achievement plots and tables from the isolated
    logs in that experiment directory.
+
+   Set `--neoglobal-name NeoGLOBAL-v2` for a later optimizer version. COCO and
+   the CSV files use this name so results from different algorithm versions
+   remain distinguishable. To build a single COCO report containing the saved
+   baseline, CMA-ES, and a later version, run only the new version and include
+   the baseline's COCO log directory:
+
+   ```sh
+   .venv/bin/python scripts/compare_bbob.py \
+       --functions 1,2,8 --dimensions 2,10 --instances 1,2,3 \
+       --runs 5 --budget-per-dimension 500 \
+       --neoglobal-name NeoGLOBAL-v2 --no-cmaes \
+       --include-coco-results exdata/comparisons/<baseline-directory>/coco_work/exdata/results
+   ```
+
+   The new run's function, dimension, instance, seed, and budget settings must
+   match the baseline for a like-for-like version comparison. The printed
+   `cocopp` command processes both result directories together.
 
    ```sh
    cd exdata/comparisons/<experiment-directory>
