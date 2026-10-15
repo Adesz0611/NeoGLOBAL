@@ -50,15 +50,15 @@ static b32 parse_u64(const char *text, u64 *value) {
 static void print_usage(const char *program) {
     fprintf(
         stderr,
-        "Usage: %s <function:1-24> <dimension> <instance> <max-evaluations>\n"
-        "Example: %s 1 2 1 1000\n",
+        "Usage: %s <function:1-24> <dimension> <instance> <max-evaluations> [seed]\n"
+        "Example: %s 1 2 1 1000 1\n",
         program,
         program
     );
 }
 
 int main(int argc, char **argv) {
-    if (argc != 5) {
+    if (argc != 5 && argc != 6) {
         print_usage(argv[0]);
         return EXIT_FAILURE;
     }
@@ -67,11 +67,13 @@ int main(int argc, char **argv) {
     u64 dimension_arg = 0;
     u64 instance_index = 0;
     u64 max_evaluations = 0;
+    u64 run_seed = 0;
     if (
         !parse_u64(argv[1], &function_index) || function_index < 1 || function_index > 24 ||
         !parse_u64(argv[2], &dimension_arg) || dimension_arg == 0 || dimension_arg > UINT32_MAX ||
         !parse_u64(argv[3], &instance_index) || instance_index == 0 ||
-        !parse_u64(argv[4], &max_evaluations) || max_evaluations == 0
+        !parse_u64(argv[4], &max_evaluations) || max_evaluations == 0 ||
+        (argc == 6 && !parse_u64(argv[5], &run_seed))
     ) {
         print_usage(argv[0]);
         return EXIT_FAILURE;
@@ -160,8 +162,10 @@ int main(int argc, char **argv) {
     evaluator->problem = coco_problem;
     problem->name = (char *)coco_problem_get_name(coco_problem);
     problem->dimension = dimension;
-    problem->random_seed = UINT64_C(0x4e454f474c4f4241)
-        ^ function_index ^ (instance_index << 16) ^ ((u64)dimension << 32);
+    problem->random_seed = argc == 6
+        ? run_seed
+        : UINT64_C(0x4e454f474c4f4241)
+            ^ function_index ^ (instance_index << 16) ^ ((u64)dimension << 32);
     problem->max_evaluations = max_evaluations;
     /* Keep sampling batches below typical budgets so the optimizer has room
        to launch local searches between sampling/reduction rounds. */
@@ -180,6 +184,7 @@ int main(int argc, char **argv) {
     printf("  Problem:      %s\n", problem->name);
     printf("  Dimension:    %u\n", dimension);
     printf("  Evaluations:  %" PRIu64 "\n", max_evaluations);
+    printf("  Seed:         %" PRIu64 "\n", problem->random_seed);
     printf("  Precision:    f64 (64-bit)\n");
 
     char error[512] = {0};

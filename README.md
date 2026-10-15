@@ -107,18 +107,42 @@ normal Lua runs.
    `third_party/coco/code-experiments/build/c/` without running COCO's own
    example benchmark.
 
-3. Build the optional NeoGLOBAL runner and execute one BBOB problem:
+3. Build the optional NeoGLOBAL and CMA-ES BBOB runners:
 
    ```sh
    make bbob
    ./build/bbob/neoglobal_bbob 1 2 1 1000
+   ./build/bbob/cmaes_bbob 1 2 1 1000
    ```
 
    The arguments are function index (1–24), dimension, instance, and maximum
    objective evaluations. The example selects Sphere (`f1`), 2 dimensions,
-   instance 1, and a budget of 1000 evaluations. COCO logs results under
-   `exdata/results/`. To create comparison plots, install `cocopp` and run
-   `python3 -m cocopp exdata/results/`.
+   instance 1, and a budget of 1000 evaluations. CMA-ES is the C implementation
+   bundled in COCO's `bbob2009-c-cmaes` example.
+
+4. Run paired trials over a problem matrix. The script builds a unique
+   experiment directory, gives both solvers matching problem settings and
+   seeds, and writes per-trial data, summary statistics, and one PNG per
+   function/dimension/instance:
+
+   ```sh
+   python3 -m venv .venv
+   .venv/bin/python -m pip install -r requirements-bbob.txt
+   .venv/bin/python scripts/compare_bbob.py \
+       --functions 1,2,8 --dimensions 2,10 --instances 1,2,3 \
+       --runs 5 --budget-per-dimension 500
+   ```
+
+   The default evaluation budget is 500 times the dimension. Pass `--budget`
+   to use one fixed budget for every case. The script prints the experiment
+   directory and a `cocopp` command after it finishes. COCO's postprocessor
+   produces standard target-achievement plots and tables from the isolated
+   logs in that experiment directory.
+
+   ```sh
+   cd exdata/comparisons/<experiment-directory>
+   ../../../.venv/bin/python -m cocopp coco_work/exdata/results/
+   ```
 
 The benchmark executable does not change the Lua application's entry point or
 make COCO a dependency of the ordinary `make` target.
