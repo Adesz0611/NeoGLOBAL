@@ -76,6 +76,53 @@ This allows NeoGLOBAL to remain independent of the software used to compute the 
 
 See [`docs/problem-files.md`](docs/problem-files.md) for the full problem file specification.
 
+## COCO BBOB Benchmark
+
+The main `neoglobal` executable continues to load Lua problem files. COCO BBOB
+is an optional, separate benchmark executable that links the same NeoGLOBAL
+optimizer core to COCO's standard objective functions and logger.
+
+The runner uses the COCO C API, which evaluates `double` vectors, so it is
+built in f64 regardless of the `NEOGLOBAL_REAL` setting used for the main
+program. The COCO source tree is an optional dependency and is not needed for
+normal Lua runs.
+
+1. Initialize the COCO submodule (or set `COCO_DIR` to a separate COCO checkout):
+
+   ```sh
+   git submodule update --init third_party/coco
+   ```
+
+2. Install the small Python dependency used by COCO's source generator and
+   generate its C API files once:
+
+   ```sh
+   python3 -m pip install colorama
+   python3 third_party/coco/scripts/fabricate \
+       --skip-java --skip-matlab --skip-octave --skip-python \
+       --skip-postprocessing --skip-unit-tests --skip-integration-tests --skip-rust
+   ```
+
+   This creates the amalgamated `coco.c` and `coco.h` under
+   `third_party/coco/code-experiments/build/c/` without running COCO's own
+   example benchmark.
+
+3. Build the optional NeoGLOBAL runner and execute one BBOB problem:
+
+   ```sh
+   make bbob
+   ./build/bbob/neoglobal_bbob 1 2 1 1000
+   ```
+
+   The arguments are function index (1–24), dimension, instance, and maximum
+   objective evaluations. The example selects Sphere (`f1`), 2 dimensions,
+   instance 1, and a budget of 1000 evaluations. COCO logs results under
+   `exdata/results/`. To create comparison plots, install `cocopp` and run
+   `python3 -m cocopp exdata/results/`.
+
+The benchmark executable does not change the Lua application's entry point or
+make COCO a dependency of the ordinary `make` target.
+
 ## Planned Architecture
 
 ```text
@@ -115,4 +162,3 @@ NeoGLOBAL aims to revisit this approach using a modern C/HPC-oriented implementa
 ## License
 
 License to be determined.
-

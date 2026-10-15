@@ -15,6 +15,11 @@ LUA_DIR   := third_party/lua/src
 LUA_LIB   := $(BUILD_DIR)/liblua.a
 TARGET    := $(BUILD_DIR)/neoglobal
 TEST_TARGET := $(BUILD_DIR)/test_neoglobal
+BBOB_TARGET := $(BUILD_ROOT)/bbob/neoglobal_bbob
+COCO_DIR ?= third_party/coco
+COCO_C := $(COCO_DIR)/code-experiments/build/c/coco.c
+COCO_CPPFLAGS ?= -I$(COCO_DIR)/code-experiments/build/c -I$(COCO_DIR)/code-experiments/src
+COCO_LDLIBS ?= -lm
 
 CPPFLAGS   := -Iinclude -I$(LUA_DIR) -Ithird_party/cfd_lib $(NEOGLOBAL_REAL_CPPFLAGS)
 CFLAGS     ?= -O2 -std=c11
@@ -78,7 +83,7 @@ NEO_SRCS := \
 
 NEO_OBJS := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(NEO_SRCS))
 
-.PHONY: all clean test
+.PHONY: all clean test bbob
 
 all: $(TARGET)
 
@@ -101,6 +106,17 @@ $(BUILD_DIR)/neoglobal_unity.o: src/main.c src/problem.c src/lua_problem.c src/s
 
 test: $(TEST_TARGET)
 	$(TEST_TARGET)
+
+# COCO is an optional dependency used only by the separate BBOB runner.
+bbob: $(BBOB_TARGET)
+
+$(COCO_C):
+	@echo "COCO C source not found at $(COCO_C). Initialize and build COCO first; see README.md."
+	@false
+
+$(BBOB_TARGET): src/neoglobal_bbob_unity.c src/bbob_main.c src/problem.c src/sampling.c src/clustering.c src/local_search.c src/optimizer.c include/neoglobal/problem.h include/neoglobal/sampling.h include/neoglobal/clustering.h include/neoglobal/local_search.h include/neoglobal/optimizer.h third_party/cfd_lib/cfd_core.h $(COCO_C)
+	@mkdir -p $(dir $@)
+	$(CC) -Iinclude -Ithird_party/cfd_lib $(NEO_CFLAGS) $(COCO_CPPFLAGS) $< $(LDFLAGS) $(COCO_C) $(COCO_LDLIBS) -o $@
 
 $(TEST_TARGET): $(BUILD_DIR)/test_unity.o $(LUA_LIB)
 	$(CC) $(BUILD_DIR)/test_unity.o $(LUA_LIB) $(LDFLAGS) $(LDLIBS) -o $@
