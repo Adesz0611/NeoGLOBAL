@@ -620,7 +620,24 @@ local_search = {
 
 `local_search.max_evaluations` limits objective evaluations in one local search. The global `stopping.max_evaluations` limit still applies to the entire run. The default local limit is `1000`.
 
-`local_search.relative_tolerance` stops the local search when its coordinate step is sufficiently small relative to the search-space bounds. It must be greater than `0` and less than `1`. The default is `1e-6`.
+`local_search.relative_tolerance` stops the local search when its coordinate step,
+divided by half the corresponding bound span, is sufficiently small. It must
+be greater than `0` and less than `0.5`, since the initial relative step is
+`0.5`. The default is `1e-6`.
+
+Local search distinguishes reaching this tolerance from exhausting its
+evaluation budget. Both outcomes can improve the best solution, but only
+searches that reach the tolerance are recorded as local minima for clustering.
+Reaching the tolerance is a numerical stopping criterion, not a mathematical
+proof of a local minimum. An incomplete search is removed from the current
+reduced batch; it is not resumed in a later iteration.
+
+The C API returns `NeoGlobal_Local_Search_Status`: `CONVERGED`,
+`BUDGET_EXHAUSTED`, or `ERROR` (each with the `NEOGLOBAL_LOCAL_SEARCH_` prefix).
+Callers must compare these statuses explicitly rather than interpret the
+return value as a boolean. Local-search evaluation counts include failed
+evaluator calls. `NeoGlobal_Result.local_searches` counts both converged and
+budget-exhausted searches that returned a result.
 
 ---
 

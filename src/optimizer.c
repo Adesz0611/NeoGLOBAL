@@ -1,5 +1,6 @@
 #include <neoglobal/optimizer.h>
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -39,8 +40,9 @@ b32 neoglobal_optimize(
         problem->reduced_samples == 0 ||
         problem->reduced_samples > problem->samples_per_iteration ||
         problem->local_search_max_evaluations == 0 ||
+        !isfinite(problem->local_search_relative_tolerance) ||
         problem->local_search_relative_tolerance <= 0.0 ||
-        problem->local_search_relative_tolerance >= 1.0 ||
+        problem->local_search_relative_tolerance >= 0.5 ||
         problem->max_evaluations > UINT64_MAX / 2
     ) {
         neoglobal_optimizer_set_error(error, error_size, "invalid optimizer arguments or settings");
@@ -131,14 +133,14 @@ b32 neoglobal_optimize(
                 break;
 
             NeoGlobal_Sample start = reduced[0];
-            NeoGlobal_Sample local_minimum;
+            NeoGlobal_Sample local_result;
             u64 local_evaluations = 0;
             u64 remaining_evaluations = problem->max_evaluations - result->evaluations;
             u64 local_budget = problem->local_search_max_evaluations;
             if (local_budget > remaining_evaluations)
                 local_budget = remaining_evaluations;
 
-            b32 local_search_succeeded = neoglobal_local_search_coordinate(
+            NeoGlobal_Local_Search_Status local_status = neoglobal_local_search_coordinate(
                 arena,
                 problem,
                 &start,
@@ -146,22 +148,23 @@ b32 neoglobal_optimize(
                 local_workspace_steps,
                 local_budget,
                 problem->local_search_relative_tolerance,
-                &local_minimum,
+                &local_result,
                 &local_evaluations,
                 error,
                 error_size
             );
             result->evaluations += local_evaluations;
-            if (!local_search_succeeded)
+            if (local_status == NEOGLOBAL_LOCAL_SEARCH_ERROR)
                 return false;
 
-            neoglobal_optimizer_update_best(result, &local_minimum);
+            neoglobal_optimizer_update_best(result, &local_result);
 
-            if (!neoglobal_clusters_record_local_minimum(
+            if (local_status == NEOGLOBAL_LOCAL_SEARCH_CONVERGED &&
+                !neoglobal_clusters_record_local_minimum(
                     problem,
                     &clusters,
                     &start,
-                    &local_minimum,
+                    &local_result,
                     reduced_count,
                     error,
                     error_size

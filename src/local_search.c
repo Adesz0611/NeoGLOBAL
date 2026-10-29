@@ -23,6 +23,7 @@ static b32 neoglobal_local_search_evaluate(
     size_t error_size
 )
 {
+    ++*evaluations_used;
     if (!neoglobal_problem_evaluate(problem, x, objective, error, error_size))
         return false;
 
@@ -31,11 +32,10 @@ static b32 neoglobal_local_search_evaluate(
         return false;
     }
 
-    ++*evaluations_used;
     return true;
 }
 
-b32 neoglobal_local_search_coordinate(
+NeoGlobal_Local_Search_Status neoglobal_local_search_coordinate(
     CFD_Arena *arena,
     const NeoGlobal_Problem *problem,
     const NeoGlobal_Sample *start,
@@ -49,23 +49,26 @@ b32 neoglobal_local_search_coordinate(
     size_t error_size
 )
 {
+    if (evaluations_used != NULL)
+        *evaluations_used = 0;
+
     if (
         arena == NULL || arena->buffer == NULL ||
         problem == NULL || problem->dimension == 0 ||
-        problem->lower == NULL || problem->upper == NULL ||
+        problem->lower == NULL || problem->upper == NULL || problem->evaluate == NULL ||
         start == NULL || start->x == NULL ||
         workspace_x == NULL || workspace_steps == NULL ||
         !isfinite((double)start->objective) ||
         max_evaluations == 0 ||
-        !isfinite(relative_tolerance) || relative_tolerance <= 0.0 ||
+        !isfinite(relative_tolerance) || relative_tolerance <= 0.0 || relative_tolerance >= 0.5 ||
         result == NULL || evaluations_used == NULL
     ) {
         neoglobal_local_search_set_error(error, error_size, "invalid local-search arguments");
-        return false;
+        return NEOGLOBAL_LOCAL_SEARCH_ERROR;
     }
 
-    *evaluations_used = 0;
     NeoGlobal_Real *current = workspace_x;
+    NeoGlobal_Real *saved_x;
     f64 *steps = workspace_steps;
     memcpy(current, start->x, (size_t)problem->dimension * sizeof(*current));
     NeoGlobal_Real current_objective = start->objective;
@@ -76,10 +79,11 @@ b32 neoglobal_local_search_coordinate(
         f64 upper = (f64)problem->upper[i];
         if (
             !isfinite(lower) || !isfinite(upper) || lower >= upper ||
+            !isfinite((double)current[i]) ||
             current[i] < problem->lower[i] || current[i] > problem->upper[i]
         ) {
             neoglobal_local_search_set_error(error, error_size, "invalid bounds or start point");
-            return false;
+            return NEOGLOBAL_LOCAL_SEARCH_ERROR;
         }
 
         /* Quarter-span steps, computed without subtracting opposite extreme
@@ -94,10 +98,10 @@ b32 neoglobal_local_search_coordinate(
     while (largest_relative_step > relative_tolerance && *evaluations_used < max_evaluations) {
         b32 improved = false;
 
-        for (u32 i = 0; i < problem->dimension && *evaluations_used < max_evaluations; ++i) {
+        for (u32 i = 0; i < problem->dimension; ++i) {
             for (
                 s32 direction = 1;
-                direction >= -1 && *evaluations_used < max_evaluations;
+                direction >= -1;
                 direction -= 2
             ) {
                 f64 lower = (f64)problem->lower[i];
@@ -112,6 +116,10 @@ b32 neoglobal_local_search_coordinate(
                 if (trial_coordinate == current[i])
                     continue;
 
+                /* A partial poll cannot justify reducing the step. */
+                if (*evaluations_used >= max_evaluations)
+                    goto save_result;
+
                 NeoGlobal_Real old_coordinate = current[i];
                 current[i] = trial_coordinate;
 
@@ -124,7 +132,7 @@ b32 neoglobal_local_search_coordinate(
                         error,
                         error_size
                     )) {
-                    return false;
+                    return NEOGLOBAL_LOCAL_SEARCH_ERROR;
                 }
 
                 if (trial_objective < current_objective) {
@@ -150,14 +158,17 @@ b32 neoglobal_local_search_coordinate(
         }
     }
 
-    NeoGlobal_Real *saved_x = cfd_arena_push_array(arena, NeoGlobal_Real, problem->dimension);
+save_result:
+    saved_x = cfd_arena_push_array(arena, NeoGlobal_Real, problem->dimension);
     if (saved_x == NULL) {
         neoglobal_local_search_set_error(error, error_size, "out of memory saving local-search result");
-        return false;
+        return NEOGLOBAL_LOCAL_SEARCH_ERROR;
     }
 
     memcpy(saved_x, current, (size_t)problem->dimension * sizeof(*saved_x));
     result->x = saved_x;
     result->objective = current_objective;
-    return true;
+    return largest_relative_step <= relative_tolerance
+        ? NEOGLOBAL_LOCAL_SEARCH_CONVERGED
+        : NEOGLOBAL_LOCAL_SEARCH_BUDGET_EXHAUSTED;
 }

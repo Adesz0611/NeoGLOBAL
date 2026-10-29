@@ -373,11 +373,11 @@ static b32 lua_problem_read_settings(
             }
 
             lua_Number tolerance = lua_tonumber(state, -1);
-            if (!isfinite((double)tolerance) || tolerance <= 0.0 || tolerance >= 1.0) {
+            if (!isfinite((double)tolerance) || tolerance <= 0.0 || tolerance >= 0.5) {
                 lua_problem_set_error(
                     error,
                     error_size,
-                    "local_search.relative_tolerance must be in (0, 1)"
+                    "local_search.relative_tolerance must be in (0, 0.5)"
                 );
                 lua_pop(state, 2);
                 return false;
